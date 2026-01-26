@@ -1,10 +1,15 @@
 import { Module } from '@nestjs/common';
 import { TransactionsModule } from './transactions/transactions.module';
-import { WebhooksModule } from './webhooks/webhooks.module';
+import { DrizzleModule } from './database/drizzle.module';
+import { ConfigModule } from '@nestjs/config';
+import { WebhookModule } from './webhook/webhook.module';
 
 
 @Module({
-  imports: [TransactionsModule, WebhooksModule],
+
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    TransactionsModule,DrizzleModule, WebhookModule],
   controllers: [],
   providers: [],
 })

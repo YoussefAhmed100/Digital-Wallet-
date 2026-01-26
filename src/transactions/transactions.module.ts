@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
-import { TransactionsController } from './transactions.controller';
 import { TransactionsService } from './transactions.service';
+import { DrizzleModule } from 'src/database/drizzle.module';
 
 @Module({
-  controllers: [TransactionsController],
-  providers: [TransactionsService]
+  imports: [DrizzleModule],
+  controllers: [],
+  providers: [TransactionsService],
+  exports: [TransactionsService]
 })
 export class TransactionsModule {}
