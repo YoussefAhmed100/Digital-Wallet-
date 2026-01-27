@@ -4,6 +4,7 @@ import { DATABASE_CONNECTION } from './database-connection';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
 import * as TransactionsSchema from '../transactions/schema/transactions.schema';
+import * as userSchema from '../users/schema/user.schema';
 
 @Global()
 @Module({
@@ -23,6 +24,7 @@ import * as TransactionsSchema from '../transactions/schema/transactions.schema'
         return drizzle(pool, {
           schema: {
             ...TransactionsSchema,
+            ...userSchema,
           },
         });
       },
