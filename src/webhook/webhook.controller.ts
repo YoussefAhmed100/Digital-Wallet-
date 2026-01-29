@@ -5,19 +5,13 @@ import { WebhookService } from './webhook.service';
 export class WebhookController {
   constructor(private readonly webhookService: WebhookService) {}
 
-  @Post(':bank')
-  async receiveWebhook(
+  @Post(':bank/:walletId')
+  async handleWebhook(
     @Param('bank') bank: string,
+    @Param('walletId') walletId: string,
     @Body() body: string,
   ) {
-    const bankName = bank.toUpperCase();
-
-    const result = await this.webhookService.handleIncomingWebhook(body, bankName);
-
-    return {
-      success: true,
-      processedCount: result.length,
-      transactions: result,
-    };
+    
+    return this.webhookService.process(bank, walletId, body);
   }
 }

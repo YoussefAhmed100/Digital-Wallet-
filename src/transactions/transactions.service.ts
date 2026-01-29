@@ -1,72 +1,177 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import { DrizzleService } from '../database/drizzle.service';
 import { transactions } from './schema/transactions.schema';
-import { DATABASE_CONNECTION } from 'src/database/database-connection';
-import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import * as TransactionSchema from './schema/transactions.schema';
-import { eq, and } from 'drizzle-orm';
-import { ParsedTransaction } from '../banks/contracts/parsed-transaction.type';
+import { wallets } from 'src/wallet/schema/wallet.schema';
+import { eq, sql } from 'drizzle-orm';
 
-export interface Transaction {
-  id: string;
+export interface CreateTransactionDTO {
+  walletId: string;
   reference: string;
-  walletId?: string | null;
-  amount: string;
-  type: string;
-  status: string;
+  amount: number;
+  type: 'CREDIT' | 'DEBIT';
   bank: string;
   transactionDate: Date;
-  createdAt?: Date | null;
-  rawPayload: unknown; 
+  metadata?: Record<string, any>;
+}
+
+export interface TransactionResult {
+  duplicate: boolean;
+  transaction?: any;
 }
 
 @Injectable()
-export class TransactionsService {
-  constructor(
-    @Inject(DATABASE_CONNECTION)
-    private readonly transactionSchema: NodePgDatabase<typeof TransactionSchema >,
-  ) {}
+export class TransactionService {
+  private readonly logger = new Logger(TransactionService.name);
 
-  async upsertTransaction(transactionDto: ParsedTransaction): Promise<Transaction> {
-    const existing = await this.findTransactionByReference(transactionDto.reference, transactionDto.bank);
-    if (existing) return existing;
+  constructor(private readonly drizzleService: DrizzleService) {}
 
-    const transactionType = transactionDto.amount >= 0 ? 'CREDIT' : 'DEBIT';
+  
+  async createTransactionIdempotent(data: CreateTransactionDTO): Promise<TransactionResult> {
+    //@desc=> Check for duplicate
+    const existingTransaction = await this.findTransactionByReference(data.reference);
+    if (existingTransaction) {
+      this.logger.log(`Transaction ${data.reference} already exists - skipping`);
+      return { duplicate: true, transaction: existingTransaction };
+    }
 
-    const [newTransaction] = await this.transactionSchema
+    const wallet = await this.validateWallet(data.walletId, data.type, data.amount);
+
+    //@desc=> Create transaction and update balance
+    const newTransaction = await this.executeTransactionWithBalanceUpdate(data, wallet);
+
+    this.logger.log(`Transaction ${data.reference} created successfully`);
+    return { duplicate: false, transaction: newTransaction };
+  }
+
+  async createTransaction(data: CreateTransactionDTO & { status?: string }) {
+    const existingTransaction = await this.findTransactionByReference(data.reference);
+    if (existingTransaction) {
+      throw new ConflictException(`Transaction with reference ${data.reference} already exists`);
+    }
+
+    const wallet = await this.validateWallet(data.walletId, data.type, data.amount);
+    return await this.executeTransactionWithBalanceUpdate(data, wallet);
+  }
+
+  
+  async getTransactionsByWallet(walletId: string) {
+    return await this.drizzleService.connection
+      .select()
+      .from(transactions)
+      .where(eq(transactions.walletId, walletId))
+      .execute();
+  }
+
+  
+  async getWalletBalance(walletId: string) {
+    const wallet = await this.findWalletById(walletId);
+    if (!wallet) {
+      throw new NotFoundException(`Wallet ${walletId} not found`);
+    }
+
+    return {
+      walletId: wallet.id,
+      balance: Number(wallet.balance),
+    };
+  }
+
+
+  private async findTransactionByReference(reference: string) {
+    const [transaction] = await this.drizzleService.connection
+      .select()
+      .from(transactions)
+      .where(eq(transactions.reference, reference))
+      .limit(1)
+      .execute();
+
+    return transaction || null;
+  }
+
+ 
+  private async findWalletById(walletId: string) {
+    const [wallet] = await this.drizzleService.connection
+      .select()
+      .from(wallets)
+      .where(eq(wallets.id, walletId))
+      .limit(1)
+      .execute();
+
+    return wallet || null;
+  }
+
+ 
+  private async validateWallet(walletId: string, type: 'CREDIT' | 'DEBIT', amount: number) {
+    const wallet = await this.findWalletById(walletId);
+
+    if (!wallet) {
+      throw new NotFoundException(`Wallet ${walletId} not found`);
+    }
+
+    if (type === 'DEBIT') {
+      const currentBalance = Number(wallet.balance);
+      if (currentBalance < amount) {
+        throw new BadRequestException(
+          `Insufficient balance. Required: ${amount}, Available: ${currentBalance}`
+        );
+      }
+    }
+
+    return wallet;
+  }
+
+
+  private async executeTransactionWithBalanceUpdate(data: CreateTransactionDTO, wallet: any) {
+    return await this.drizzleService.connection.transaction(async (tx) => {
+     
+      const newTransaction = await this.insertTransaction(tx, data);
+
+      // Update wallet balance
+      await this.updateWalletBalance(tx, data.walletId, data.amount, data.type, wallet.balance);
+
+      return newTransaction;
+    });
+  }
+
+
+  private async insertTransaction(tx: any, data: CreateTransactionDTO) {
+    const [newTransaction] = await tx
       .insert(transactions)
       .values({
-        reference: transactionDto.reference,
-        amount: transactionDto.amount.toString(),
-        type: transactionType,
-        status: 'SUCCESS',
-        bank: transactionDto.bank,
-        transactionDate: transactionDto.transactionDate,
-        rawPayload: transactionDto.metadata, 
+        reference: data.reference,
+        walletId: data.walletId,
+        amount: data.amount.toFixed(2),
+        type: data.type,
+        bank: data.bank,
+        transactionDate: data.transactionDate,
+        metadata: data.metadata || {},
+        createdAt: new Date(),
       })
       .returning();
 
     return newTransaction;
   }
 
-  async findTransactionByReference(reference: string, bank: string): Promise<Transaction > {
-    return (await this.transactionSchema
-      .select()
-      .from(transactions)
-      .where(
-          eq(transactions.reference, reference),
-       
-      
-      )
-      .limit(1))[0];
-  }
 
-  async processTransactionsBatch(bank: string, transactionsList: ParsedTransaction[]): Promise<Transaction[]> {
-    const results: Transaction[] = [];
-    for (const tx of transactionsList) {
-      tx.bank = bank;
-      const saved = await this.upsertTransaction(tx);
-      if (saved) results.push(saved);
-    }
-    return results;
+  private async updateWalletBalance(
+    tx: any,
+    walletId: string,
+    amount: number,
+    type: 'CREDIT' | 'DEBIT',
+    oldBalance: string
+  ) {
+    const operation = type === 'CREDIT' ? '+' : '-';
+    const [updatedWallet] = await tx
+      .update(wallets)
+      .set({
+        balance: sql`CAST(${wallets.balance} AS NUMERIC(15,2)) ${sql.raw(operation)} ${amount}`
+      })
+      .where(eq(wallets.id, walletId))
+      .returning();
+
+    this.logger.log(
+      `${type}: Wallet ${walletId} | Old: ${oldBalance} | ${type === 'CREDIT' ? 'Added' : 'Deducted'}: ${amount} | New: ${updatedWallet.balance}`
+    );
+
+    return updatedWallet;
   }
 }
