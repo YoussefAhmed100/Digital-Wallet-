@@ -1,47 +1,91 @@
-// webhook.service.ts
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { PayTechParser } from '../banks/paytech/paytech.parser';
-import { AcmeParser } from '../banks/acme/acme.parser';
-import { TransactionsService } from '../transactions/transactions.service';
-import { ParsedTransaction } from '../banks/contracts/parsed-transaction.type';
+import { Injectable, Logger } from '@nestjs/common';
+import { BankParserFactory } from './parsers/parser.factory';
+import { TransactionService } from 'src/transactions/transactions.service';
 
 @Injectable()
 export class WebhookService {
-  private parsers = {
-    PAYTECH: new PayTechParser(),
-    ACME: new AcmeParser(),
-  };
+  private readonly logger = new Logger(WebhookService.name);
 
-  constructor(private readonly transactionsService: TransactionsService) {}
+  constructor(
+    private readonly parserFactory: BankParserFactory,
+    private readonly transactionService: TransactionService,
+  ) {}
 
-  private detectBank(payload: string, bankNameHeader?: string): 'PAYTECH' | 'ACME' {
-    if (bankNameHeader && (bankNameHeader.toUpperCase() === 'PAYTECH' || bankNameHeader.toUpperCase() === 'ACME')) {
-      return bankNameHeader.toUpperCase() as 'PAYTECH' | 'ACME';
+  async process(bank: string, walletId: string, body: string) {
+    const parser = this.parserFactory.get(bank);
+    const lines = body.split('\n').map(line => line.trim()).filter(Boolean);
+
+    let inserted = 0;
+    let skipped = 0;
+
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      await this.processLine(parser, bank, walletId, line, i + 1)
+        .then(result => {
+          if (result.success) {
+            if (result.duplicate) {
+              skipped++;
+              this.logger.log(`Line ${i + 1}: Duplicate - skipped`);
+            } else {
+              inserted++;
+              this.logger.log(`Line ${i + 1}: Success`);
+            }
+          } else {
+            skipped++;
+      
+            this.logger.warn(`Line ${i + 1}: Failed - ${result.error}`);
+          }
+        })
+        .catch(error => {
+          skipped++;
+  
+          this.logger.error(`Line ${i + 1}: Error - ${error.message}`);
+        });
     }
 
-    // لو مش موجود هنجرب نكتشف بالـ pattern في النص
-    if (payload.includes('#')) return 'PAYTECH';
-    if (payload.includes('//')) return 'ACME';
-
-    throw new BadRequestException('Unable to detect bank from payload');
+    return { 
+      bank, 
+      walletId, 
+      totalLines: lines.length,
+      inserted, 
+      skipped,
+   
+    };
   }
 
-  async handleIncomingWebhook(payload: string, bankNameHeader?: string) {
-    const bank = this.detectBank(payload, bankNameHeader);
-    const parser = this.parsers[bank];
-    if (!parser) {
-      throw new BadRequestException(`Parser for bank ${bank} not found`);
-    }
-
-    const parsedTransactions: ParsedTransaction[] = parser.parse(payload);
-
-    // أضف اسم البنك لكل معاملة (لو مش مضاف)
-    parsedTransactions.forEach(tx => {
-      tx.bank = bank;
+  private async processLine(
+    parser: any,
+    bank: string,
+    walletId: string,
+    line: string,
+    lineNumber: number
+  ): Promise<{ success: boolean; duplicate: boolean; error?: string }> {
+    
+    return new Promise((resolve) => {
+      Promise.resolve()
+        .then(() => parser.parse(line))
+        .then(parsed => {
+          return this.transactionService.createTransactionIdempotent({
+            ...parsed,
+            bank,
+            walletId,
+          });
+        })
+        .then(result => {
+          resolve({
+            success: true,
+            duplicate: result.duplicate
+          });
+        })
+        .catch(error => {
+          resolve({
+            success: false,
+            duplicate: false,
+            error: error.message || 'Processing failed'
+          });
+        });
     });
-
-    // خزن المعاملات في قاعدة البيانات دفعة واحدة
-    const savedTransactions = await this.transactionsService.processTransactionsBatch(bank, parsedTransactions);
-    return savedTransactions;
   }
 }

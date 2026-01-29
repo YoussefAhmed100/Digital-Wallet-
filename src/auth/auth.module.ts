@@ -8,6 +8,7 @@ import { PasswordService } from './utils/password.service';
 import { TokenService } from './utils/token.service';
 
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { DrizzleModule } from 'src/database/drizzle.module';
 
 @Module({
   imports: [
@@ -19,12 +20,14 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         secret: config.getOrThrow('JWT_SECRET'),
       }),
     }),
+     DrizzleModule
   ],
   controllers: [AuthController],
   providers: [
     AuthService,
     PasswordService,
     TokenService,
+     
   ],
 })
 export class AuthModule {}

@@ -2,13 +2,12 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
+
 } from '@nestjs/common';
 
 import { eq } from 'drizzle-orm';
-import { Inject } from '@nestjs/common';
-import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
-import { DATABASE_CONNECTION } from '../database/database-connection';
+import { DrizzleService } from '../database/drizzle.service';
 import * as userSchema from '../users/schema/user.schema';
 
 import { RegisterDto } from './dto/register.dto';
@@ -20,15 +19,15 @@ import { TokenService } from './utils/token.service';
 @Injectable()
 export class AuthService {
   constructor(
-    @Inject(DATABASE_CONNECTION)
-    private readonly db: NodePgDatabase<typeof userSchema>,
+    
+    private readonly drizzle: DrizzleService,
     private readonly passwordService: PasswordService,
     private readonly tokenService: TokenService,
   ) {}
 
   /* ===================== REGISTER ===================== */
   async register(dto: RegisterDto) {
-    const exists = await this.db.query.users.findFirst({
+    const exists = await this.drizzle.connection.query.users.findFirst({
       where: eq(userSchema.users.email, dto.email),
     });
 
@@ -39,13 +38,12 @@ export class AuthService {
     const hashedPassword =
       await this.passwordService.hash(dto.password);
 
-    const [user] = await this.db
+    const [user] = await this.drizzle.connection
       .insert(userSchema.users)
       .values({
         email: dto.email,
         userName: dto.userName,
         password: hashedPassword,
-       
       })
       .returning();
 
@@ -54,7 +52,7 @@ export class AuthService {
 
   /* ===================== LOGIN ===================== */
   async login(dto: LoginDto) {
-    const user = await this.db.query.users.findFirst({
+    const user = await this.drizzle.connection.query.users.findFirst({
       where: eq(userSchema.users.email, dto.email),
     });
 
@@ -62,11 +60,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const isValid =
-      await this.passwordService.compare(
-        dto.password,
-        user.password,
-      );
+    const isValid = await this.passwordService.compare(
+      dto.password,
+      user.password,
+    );
 
     if (!isValid) {
       throw new UnauthorizedException('Invalid credentials');
@@ -77,34 +74,34 @@ export class AuthService {
 
   /* ===================== LOGOUT ===================== */
   async logout(userId: string) {
-    await this.db
+    await this.drizzle.connection
       .update(userSchema.users)
       .set({ refreshTokenHash: null })
       .where(eq(userSchema.users.id, userId));
   }
 
   /* ===================== REFRESH ===================== */
- async refresh(userId: string, refreshToken: string) {
-  const user = await this.db.query.users.findFirst({
-    where: eq(userSchema.users.id, userId),
-  });
+  async refresh(userId: string, refreshToken: string) {
+    const user = await this.drizzle.connection.query.users.findFirst({
+      where: eq(userSchema.users.id, userId),
+    });
 
-  if (!user || !user.refreshTokenHash) {
-    throw new UnauthorizedException();
+    if (!user || !user.refreshTokenHash) {
+      throw new UnauthorizedException();
+    }
+
+    const isValid =
+      await this.tokenService.compareRefreshToken(
+        refreshToken,
+        user.refreshTokenHash,
+      );
+
+    if (!isValid) {
+      throw new UnauthorizedException();
+    }
+
+    return this.issueTokens(user);
   }
-
-  const isValid = await this.tokenService.compareRefreshToken(
-    refreshToken,
-    user.refreshTokenHash,
-  );
-
-  if (!isValid) {
-    throw new UnauthorizedException();
-  }
-
-  return this.issueTokens(user);
-}
-
 
   /* ===================== TOKEN ISSUER ===================== */
   private async issueTokens(user: {
@@ -128,7 +125,7 @@ export class AuthService {
     const refreshTokenHash =
       await this.tokenService.hashRefreshToken(refreshToken);
 
-    await this.db
+    await this.drizzle.connection
       .update(userSchema.users)
       .set({ refreshTokenHash })
       .where(eq(userSchema.users.id, user.id));
