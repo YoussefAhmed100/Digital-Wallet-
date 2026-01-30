@@ -6,6 +6,7 @@ import { WebhookModule } from './webhook/webhook.module';
 import { WalletModule } from './wallet/wallet.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { PaymentsModule } from './payments/payments.module';
 
 
 @Module({
@@ -13,7 +14,8 @@ import { UsersModule } from './users/users.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     TransactionsModule,DrizzleModule, WebhookModule, WalletModule, UsersModule,
-  AuthModule],
+  AuthModule,
+  PaymentsModule],
   controllers: [],
   providers: [],
 })
