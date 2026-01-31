@@ -1,5 +1,5 @@
 {
-  "id": "ae9820dc-83ab-480a-920b-9950b191a865",
+  "id": "5ad29560-33e4-427c-a9e1-e2282407dd65",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -184,14 +184,14 @@
           "name": "balance",
           "type": "numeric(15, 2)",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'0'"
         },
         "currency": {
           "name": "currency",
           "type": "varchar(10)",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'USD'"
         },
         "created_at": {

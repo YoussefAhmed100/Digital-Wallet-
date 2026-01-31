@@ -11,7 +11,7 @@ export class BankParserFactory {
   ) {}
 
   get(bank: string): IBankStrategy {
-    // ✅ إضافة normalization
+   
     const normalizedBank = bank?.toLowerCase().trim();
 
     if (normalizedBank === 'paytech') return this.payTechParser;
