@@ -26,8 +26,8 @@ CREATE TABLE "users" (
 CREATE TABLE "wallets" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
-	"balance" numeric(15, 2) DEFAULT '0',
-	"currency" varchar(10) DEFAULT 'USD',
+	"balance" numeric(15, 2) DEFAULT '0' NOT NULL,
+	"currency" varchar(10) DEFAULT 'USD' NOT NULL,
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint

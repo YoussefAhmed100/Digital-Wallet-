@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm';
 
 import { DrizzleService } from '../database/drizzle.service';
 import { wallets } from './schema/wallet.schema';
+import { users } from 'src/users/schema/user.schema';
 
 @Injectable()
 export class WalletService {
@@ -17,6 +18,13 @@ export class WalletService {
     private readonly drizzle: DrizzleService) {}
 
   async create(userId: string, currency: string) {
+    // Check if user exists
+    const userExists = await this.checkIfUserExists(userId);
+    if (!userExists) {
+      throw new NotFoundException('User not found');
+    }
+   
+    //  @desc Check if user already has a wallet
     const existingWallet = await this.drizzle.connection.query.wallets.findFirst({
       where: eq(wallets.userId, userId),
     });
@@ -36,8 +44,42 @@ export class WalletService {
 
     return wallet;
   }
+  // @desc find all wallets
+  async findAll() {
+    return this.drizzle.connection.query.wallets.findMany();
+  }
 
-  async findById(walletId: string) {
+  // @desc cridit wallet
+  async creditWallet(walletId: string, amount: number) {
+    const wallet = await this.findById(walletId);
+    const newBalance = (BigInt(wallet.balance) + BigInt(amount)).toString();
+
+    const [updatedWallet] = await this.drizzle.connection 
+      .update(wallets)
+      .set({ balance: newBalance })
+      .where(eq(wallets.id, walletId))
+      .returning();
+    return updatedWallet;
+  }
+  // @desc debit wallet
+  async debitWallet(walletId: string, amount: number) {
+    const wallet = await this.findById(walletId);
+    if (BigInt(wallet.balance) < BigInt(amount)) {
+      throw new BadRequestException('Insufficient funds');
+    }
+    const newBalance = (BigInt(wallet.balance) - BigInt(amount)).toString();
+    const [updatedWallet] = await this.drizzle.connection
+      .update(wallets)
+      .set({ balance: newBalance })
+      .where(eq(wallets.id, walletId))
+      .returning();
+    return updatedWallet;
+  }
+ 
+
+
+  // @desc find wallet by id
+   async findById(walletId: string) {
     const wallet = await this.drizzle.connection.query.wallets.findFirst({
       where: eq(wallets.id, walletId),
     });
@@ -49,43 +91,11 @@ export class WalletService {
     return wallet;
   }
 
-  async credit(walletId: string, amount: number) {
-    if (amount <= 0) {
-      throw new BadRequestException('Amount must be greater than zero');
-    }
-
-    const wallet = await this.findById(walletId);
-
-    const newBalance = Number(wallet.balance) + amount;
-
-    await this.drizzle.connection
-      .update(wallets)
-      .set({ balance: newBalance.toString() })
-      .where(eq(wallets.id, walletId));
-
-    return { walletId, balance: newBalance };
+   // @desc check if user exists
+   private async checkIfUserExists(userId: string) {
+    const existingUser = await this.drizzle.connection.query.users.findFirst({
+      where: eq(users.id, userId),
+    });
+    return existingUser;
   }
-
-  async debit(walletId: string, amount: number) {
-    if (amount <= 0) {
-      throw new BadRequestException('Amount must be greater than zero');
-    }
-
-    const wallet = await this.findById(walletId);
-
-    const currentBalance = Number(wallet.balance);
-
-    if (currentBalance < amount) {
-      throw new BadRequestException('Insufficient balance');
-    }
-
-    const newBalance = currentBalance - amount;
-
-    await this.drizzle.connection
-      .update(wallets)
-      .set({ balance: newBalance.toString() })
-      .where(eq(wallets.id, walletId));
-
-    return { walletId, balance: newBalance };
   }
-}

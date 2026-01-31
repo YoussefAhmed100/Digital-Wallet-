@@ -15,6 +15,10 @@ export class WalletController {
   ) {
     return this.walletService.create(userId, currency);
   }
+  @Get()
+  getAllWallets() {
+    return this.walletService.findAll();
+  }
 
  
   @Get(':id')
@@ -28,7 +32,7 @@ export class WalletController {
     @Param('id') walletId: string,
     @Body('amount') amount: number,
   ) {
-    return this.walletService.credit(walletId, amount);
+    return this.walletService.creditWallet(walletId, amount);
   }
 
   
@@ -37,6 +41,6 @@ export class WalletController {
     @Param('id') walletId: string,
     @Body('amount') amount: number,
   ) {
-    return this.walletService.debit(walletId, amount);
+    return this.walletService.debitWallet(walletId, amount);
   }
 }

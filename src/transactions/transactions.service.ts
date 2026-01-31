@@ -3,21 +3,9 @@ import { DrizzleService } from '../database/drizzle.service';
 import { transactions } from './schema/transactions.schema';
 import { wallets } from 'src/wallet/schema/wallet.schema';
 import { eq, sql } from 'drizzle-orm';
+import { ICreateTransaction } from './interfaces/create-transaction.interface';
+import { ITransactionResult } from './interfaces/transaction-result.interface';
 
-export interface CreateTransactionDTO {
-  walletId: string;
-  reference: string;
-  amount: number;
-  type: 'CREDIT' | 'DEBIT';
-  bank: string;
-  transactionDate: Date;
-  metadata?: Record<string, any>;
-}
-
-export interface TransactionResult {
-  duplicate: boolean;
-  transaction?: any;
-}
 
 @Injectable()
 export class TransactionService {
@@ -26,7 +14,7 @@ export class TransactionService {
   constructor(private readonly drizzleService: DrizzleService) {}
 
   
-  async createTransactionIdempotent(data: CreateTransactionDTO): Promise<TransactionResult> {
+  async createTransactionIdempotent(data: ICreateTransaction): Promise<ITransactionResult> {
     //@desc=> Check for duplicate
     const existingTransaction = await this.findTransactionByReference(data.reference);
     if (existingTransaction) {
@@ -43,15 +31,6 @@ export class TransactionService {
     return { duplicate: false, transaction: newTransaction };
   }
 
-  async createTransaction(data: CreateTransactionDTO & { status?: string }) {
-    const existingTransaction = await this.findTransactionByReference(data.reference);
-    if (existingTransaction) {
-      throw new ConflictException(`Transaction with reference ${data.reference} already exists`);
-    }
-
-    const wallet = await this.validateWallet(data.walletId, data.type, data.amount);
-    return await this.executeTransactionWithBalanceUpdate(data, wallet);
-  }
 
   
   async getTransactionsByWallet(walletId: string) {
@@ -120,7 +99,7 @@ export class TransactionService {
   }
 
 
-  private async executeTransactionWithBalanceUpdate(data: CreateTransactionDTO, wallet: any) {
+  private async executeTransactionWithBalanceUpdate(data: ICreateTransaction, wallet: any) {
     return await this.drizzleService.connection.transaction(async (tx) => {
      
       const newTransaction = await this.insertTransaction(tx, data);
@@ -133,7 +112,7 @@ export class TransactionService {
   }
 
 
-  private async insertTransaction(tx: any, data: CreateTransactionDTO) {
+  private async insertTransaction(tx: any, data: ICreateTransaction) {
     const [newTransaction] = await tx
       .insert(transactions)
       .values({
