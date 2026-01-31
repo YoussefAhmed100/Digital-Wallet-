@@ -17,7 +17,7 @@ export abstract class BaseBankParser {
       ...parsed,
       rawLine: payload,
       metadata: parsed.metadata || {},
-      type: 'CREDIT',  // or set dynamically if needed
+      type: 'CREDIT', 
     };
   }
 
