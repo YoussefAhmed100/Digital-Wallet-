@@ -4,10 +4,12 @@ import { ParsedTransaction } from '../contracts/parsed-transaction.type';
 
 @Injectable()
 export class PayTechParser extends BaseBankParser {
-  protected validatePayloadFormat(payload: string): void {
+  protected validatePayloadFormat(payload: string):void {
     if (!payload.includes('#')) {
       throw new BadRequestException('Invalid PayTech payload format');
     }
+   
+
   }
 
   protected parsePayload(payload: string): ParsedTransaction {
