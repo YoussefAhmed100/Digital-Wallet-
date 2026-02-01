@@ -12,7 +12,7 @@ export class WebhookService {
 
   async process(bank: string, walletId: string, body: string) {
     const parser = this.parserFactory.get(bank);
-
+  //  @desc =>Pre-processing the body to handle different line endings and trim whitespace
     const lines = body
       .split('\n')
       .map(line => line.trim())
@@ -44,7 +44,7 @@ export class WebhookService {
       skipped,
     };
   }
-
+// @desc => returns whether the transaction was a duplicate
   private async processLine(
     parser: BaseBankParser, 
     bank: string,

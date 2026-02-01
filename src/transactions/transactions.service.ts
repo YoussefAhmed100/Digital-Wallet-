@@ -1,10 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { DrizzleService } from '../database/drizzle.service';
 import { transactions } from './schema/transactions.schema';
 import { wallets } from 'src/wallet/schema/wallet.schema';
 import { eq, sql } from 'drizzle-orm';
-import { ICreateTransaction } from './interfaces/create-transaction.interface';
-import { ITransactionResult } from './interfaces/transaction-result.interface';
+import { ICreateTransaction } from './contracts/create-transaction.interface';
+import { ITransactionResult } from './contracts/transaction-result.interface';
 
 
 @Injectable()
