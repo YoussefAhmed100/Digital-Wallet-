@@ -13,9 +13,13 @@ export class BankParserFactory {
    
     const normalizedBank = bank.toLowerCase().trim();
 
-    if (normalizedBank === 'paytech') return this.payTechParser;
-    if (normalizedBank === 'acme') return this.acmeParser;
-
-    throw new BadRequestException(`Unsupported bank: ${bank}`);
+     switch (normalizedBank) {
+      case 'paytech':
+        return this.payTechParser;
+      case 'acme':
+        return this.acmeParser;
+      default:
+        throw new BadRequestException(`Unsupported bank: ${bank}`);
+    }
   }
 }
